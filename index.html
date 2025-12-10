@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Energy-Efficient CPU Scheduler</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+
+:root {
+    --bg: #0e1320;
+    --card: #141b2d;
+    --light: #a9b4d4;
+    --accent: #47b0ff;
+    --accent2: #15e6ab;
+    --border: rgba(255,255,255,0.06);
+    --mono: "Segoe UI", Roboto, sans-serif;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    font-family: var(--mono);
+    color: white;
+}
+
+/* Header */
+header {
+    background: linear-gradient(90deg, #0b1323, #0f1a33);
+    padding: 20px;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+}
+header h1 {
+    margin: 0;
+    font-size: 26px;
+    color: var(--accent);
+}
+
+/* Layout */
+.container {
+    max-width: 1200px;
+    margin: auto;
+    padding: 25px;
+    display: grid;
+    grid-template-columns: 350px 1fr;
+    gap: 25px;
+}
+
+/* Card */
+.card {
+    background: var(--card);
+    padding: 20px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+}
+
+/* Inputs */
+label {
+    display: block;
+    margin-top: 12px;
+    font-size: 14px;
+    color: var(--light);
+}
+input {
+    width: 100%;
+    padding: 10px;
+    margin-top: 6px;
+    background: #1a2338;
+    border: 1px solid var(--border);
+    color: white;
+    border-radius: 8px;
+}
+
+/* Buttons */
+button {
+    width: 100%;
+    padding: 10px;
+    margin-top: 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: bold;
+    border: none;
+}
+.btn-primary { background: var(--accent); color: black; }
+.btn-secondary { background: transparent; color: var(--light); border: 1px solid var(--border); }
+
+/* Table */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 12px;
+}
+th {
+    background: #1a2338;
+    padding: 10px;
+    color: var(--accent);
+}
+td {
+    padding: 10px;
+    border-bottom: 1px dashed var(--border);
+}
+
+/* Gantt */
+.gantt-box {
+    background: #1a2338;
+    padding: 15px;
+    border-radius: 12px;
+}
+.gantt-bar {
+    height: 32px;
+    margin-bottom: 10px;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    font-weight: bold;
+    justify-content: center;
+    color: black;
+}
+
+/* Colors */
+.c1 { background: #47b0ff; }
+.c2 { background: #15e6ab; }
+.c3 { background: #ffd166; }
+.c4 { background:#ff6961; }
+
+/* Metrics */
+.metrics {
+    display: flex;
+    margin-top: 20px;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+.metric {
+    background: #1a2338;
+    padding: 12px;
+    border-radius: 10px;
+}
+.metric strong { color: var(--accent2); }
+
+</style>
+</head>
+
+<body>
+
+<header>
+    <h1>Energy-Efficient CPU Scheduler (Running Version)</h1>
+</header>
+
+<div class="container">
+
+    <!-- LEFT PANEL -->
+    <div class="card">
+        <h2>Process Input</h2>
+
+        <label>Arrival Time</label>
+        <input id="arrival" type="number" min="0">
+
+        <label>Burst Time</label>
+        <input id="burst" type="number" min="1">
+
+        <button class="btn-primary" onclick="addProcess()">Add Process</button>
+        <button class="btn-secondary" onclick="clearAll()">Clear All</button>
+
+        <h2 style="margin-top:25px;">Process List</h2>
+
+        <table>
+            <thead>
+                <tr><th>PID</th><th>Arrival</th><th>Burst</th><th>Del</th></tr>
+            </thead>
+            <tbody id="procTable"></tbody>
+        </table>
+
+        <button class="btn-primary" onclick="runScheduler()" style="margin-top:20px;">Run Scheduler</button>
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <div class="card">
+        <h2>Output</h2>
+
+        <h3 style="color: var(--accent2);">Gantt Chart</h3>
+        <div class="gantt-box" id="ganttChart"></div>
+
+        <h3 style="color: var(--accent2); margin-top:20px;">Result Table</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>PID</th><th>Start</th><th>Finish</th>
+                    <th>Waiting</th><th>Turnaround</th><th>Energy</th>
+                </tr>
+            </thead>
+            <tbody id="resultTable"></tbody>
+        </table>
+
+        <div class="metrics">
+            <div class="metric"><strong>Avg WT:</strong><br><span id="avgWT">0</span></div>
+            <div class="metric"><strong>Avg TAT:</strong><br><span id="avgTAT">0</span></div>
+            <div class="metric"><strong>Total Energy:</strong><br><span id="totalEnergy">0</span></div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+
+let processes = [];
+let nextPID = 1;
+
+// Add Process
+function addProcess() {
+    let a = Number(document.getElementById("arrival").value);
+    let b = Number(document.getElementById("burst").value);
+
+    if (a < 0 || b <= 0) return alert("Invalid input!");
+
+    processes.push({ pid: nextPID++, arrival: a, burst: b });
+
+    displayProcesses();
+}
+
+// Display Process Table
+function displayProcesses() {
+    let table = document.getElementById("procTable");
+    table.innerHTML = "";
+
+    processes.forEach((p, index) => {
+        table.innerHTML += `
+            <tr>
+                <td>P${p.pid}</td>
+                <td>${p.arrival}</td>
+                <td>${p.burst}</td>
+                <td><button onclick="deleteProcess(${index})" style="background:red;color:white;border:none;padding:5px;">X</button></td>
+            </tr>
+        `;
+    });
+}
+
+// Delete a process
+function deleteProcess(i) {
+    processes.splice(i, 1);
+    displayProcesses();
+}
+
+// Clear all
+function clearAll() {
+    processes = [];
+    nextPID = 1;
+    displayProcesses();
+}
+
+// Frequency Model
+function freq(b) {
+    if (b <= 3) return 1.0;
+    if (b <= 6) return 0.7;
+    return 0.5;
+}
+
+// Scheduler
+function runScheduler() {
+    if (processes.length === 0) return alert("Add processes!");
+
+    let list = JSON.parse(JSON.stringify(processes));
+    list.sort((a,b)=> a.arrival - b.arrival);
+
+    let time = 0;
+    let completed = [];
+
+    while (list.length > 0) {
+        let available = list.filter(p => p.arrival <= time);
+
+        if (available.length === 0) {
+            time++;
+            continue;
+        }
+
+        available.sort((a,b)=> a.burst - b.burst);
+        let p = available[0];
+
+        let start = time;
+        let finish = start + p.burst;
+        let energy = freq(p.burst) * p.burst * p.burst;
+
+        completed.push({ ...p, start, finish, energy });
+
+        time = finish;
+
+        list = list.filter(x => x.pid !== p.pid);
+    }
+
+    displayResults(completed);
+}
+
+// Show Outputs
+function displayResults(list) {
+
+    // Gantt Chart
+    let g = document.getElementById("ganttChart");
+    g.innerHTML = "";
+    let colors = ["c1","c2","c3","c4"];
+
+    let total = list[list.length-1].finish;
+
+    list.forEach((p,i)=>{
+        let width = (p.burst / total) * 100;
+
+        g.innerHTML += `
+            <div class="gantt-bar ${colors[i%4]}" style="width:${width}%">P${p.pid}</div>
+        `;
+    });
+
+    // Result Table
+    let t = document.getElementById("resultTable");
+    t.innerHTML = "";
+
+    let totalWT = 0, totalTAT = 0, totalEnergy = 0;
+
+    list.forEach(p=>{
+        let wt = p.start - p.arrival;
+        let tat = p.finish - p.arrival;
+
+        totalWT += wt;
+        totalTAT += tat;
+        totalEnergy += p.energy;
+
+        t.innerHTML += `
+            <tr>
+                <td>P${p.pid}</td>
+                <td>${p.start}</td>
+                <td>${p.finish}</td>
+                <td>${wt}</td>
+                <td>${tat}</td>
+                <td>${p.energy.toFixed(2)}</td>
+            </tr>
+        `;
+    });
+
+    document.getElementById("avgWT").innerText = (totalWT / list.length).toFixed(2);
+    document.getElementById("avgTAT").innerText = (totalTAT / list.length).toFixed(2);
+    document.getElementById("totalEnergy").innerText = totalEnergy.toFixed(2);
+}
+
+</script>
+
+</body>
+</html>
